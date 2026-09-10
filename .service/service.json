@@ -1,0 +1,43 @@
+{
+    "tag": "bitcoin-node",
+    "architecture": "linux/arm64",
+    "init": {
+        "entry_path": ["service", "entrypoint.py"]
+    },
+    "api": [
+        {
+            "port": 8332,
+            "transport": "tcp",
+            "protocol": [
+                "http"
+            ]
+        }
+    ],
+    "envs": [
+        "BITCOIN_MNEMONIC",
+        "BITCOIN_MNEMONIC_PASSPHRASE",
+        "BITCOIN_NETWORK",
+        "BITCOIN_PRUNE",
+        "BITCOIN_RPC_USER",
+        "BITCOIN_RPC_PASSWORD",
+        "BITCOIN_WALLET_NAME"
+    ],
+    "network": [
+        {
+            "tags": [
+                "*"
+            ],
+            "prose": "Bitcoin's peer-to-peer network. A node finds its peers through DNS seeds and then connects to whatever addresses they hand back, so the set cannot be enumerated in advance: this needs open egress, and says so rather than declaring a list it would then have to work around."
+        }
+    ],
+    "resources": {
+        "at_init": {
+            "mem_limit": 1500000000,
+            "disk_space": 16000000000
+        },
+        "at_most": {
+            "mem_limit": 2500000000,
+            "disk_space": 16000000000
+        }
+    }
+}
