@@ -2,7 +2,7 @@
     "tag": "bitcoin-node",
     "architecture": "linux/arm64",
     "init": {
-        "entry_path": ["service", "entrypoint.py"]
+        "entry_path": ["service", "entrypoint.sh"]
     },
     "api": [
         {

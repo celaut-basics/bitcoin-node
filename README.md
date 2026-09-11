@@ -47,11 +47,23 @@ That path is the point: **any standard wallet opens the same funds from the same
 with no knowledge of this service. It is what makes the mnemonic a real backup rather
 than a string this particular container happens to understand.
 
-`service/derive.py` does it in the standard library and nothing else. No third-party
-cryptography derives the key that holds the funds, so the code that does is short enough
-to read in one sitting and there is nothing in it that can move underneath the pinned
-image. `tests/test_derive.py` checks it against the published BIP-39 and BIP-32 test
-vectors.
+`service/derive.sh` does it in `bash`, with OpenSSL for the primitives and `bc` for the
+256-bit arithmetic — the same OpenSSL Debian ships to everything else on the system, and
+no cryptography library beyond it. PBKDF2-HMAC-SHA512 for the seed, HMAC-SHA512 for each
+step down the tree, SHA-256 and RIPEMD-160 for the encodings, and `openssl ec` on
+secp256k1 for the one public key that has to be computed. What is written here is the
+arrangement of those primitives into BIP-39 and BIP-32, which is short enough to read in
+one sitting, and the packages are pinned to their exact versions so nothing in it can
+move underneath the pinned image. `tests/test_derive.sh` checks it against the published
+BIP-39 and BIP-32 test vectors.
+
+One limitation is worth stating rather than leaving to be discovered. BIP-39 hashes the
+**NFKD** form of both the words and the passphrase, and a shell cannot normalise Unicode.
+The English wordlist is ASCII, for which NFKD is the identity, so the words are
+unaffected; a `BITCOIN_MNEMONIC_PASSPHRASE` with a byte outside ASCII is **refused** at
+startup rather than hashed as whatever bytes happened to arrive. Hashing an unnormalised
+passphrase would derive a wallet no other tool opens, which is the one failure worth
+refusing to start over.
 
 And the service does not take its own word for it. After importing, it asks Core — a
 second, independent implementation of BIP-32 — where a fresh address came from, and
@@ -112,19 +124,29 @@ The image is `linux/arm64`. A node on another architecture needs a build for it 
 match, since the Core release is per platform.
 
 Bitcoin Core is pinned by version **and** by the SHA256 from that release's own
-`SHA256SUMS`; the base image is pinned by digest. Verifying the *signature* on
-`SHA256SUMS` would be better still and would need the guix builders' keys in the image —
-what is here is a checksum in a reviewed file, which cannot change without a diff.
+`SHA256SUMS`; the base image (`debian:bookworm-slim`) is pinned by digest, and the four
+packages installed on top of it — `openssl`, `bc`, `jq` and the two libraries they pull —
+are pinned to their exact Debian versions. Verifying the *signature* on `SHA256SUMS`
+would be better still and would need the guix builders' keys in the image — what is here
+is a checksum in a reviewed file, which cannot change without a diff.
+
+Pinning packages to the patch version has a cost worth naming: when one of them leaves
+the mirror after a security update, the build stops until this file is edited. That is
+the same trade already made for Core and for the base image, and it is the one that keeps
+a key holder from being "whatever the mirror served today".
 
 ## Tests
 
 ```sh
-python3 -m unittest discover tests
+bash tests/test_derive.sh
 ```
 
-Standard library only, like the service. They cover the derivation: the published
-vectors, the curve identity a non-hardened child has to satisfy, the encodings, and the
-descriptors as they are handed to Core.
+`bash`, `openssl` and `bc` — the same three the service uses, which is what makes the
+tests worth running on a workstation as well as in the image. They cover the derivation:
+the published vectors (all of BIP-39's English set and BIP-32's first four, walked down to
+`m/0'/1/2'/2/1000000000`), the curve identity a non-hardened child has to satisfy, the
+encodings, the descriptors as they are handed to Core, and the `rpcauth` line against
+what Core's own `share/rpcauth/rpcauth.py` produces for a fixed salt.
 
 What they do **not** cover is anything past that boundary — no bitcoind is started, no
 chain is synced, no transaction is signed. The service's own startup check is what
