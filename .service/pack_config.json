@@ -7,8 +7,6 @@
     "service"
   ],
   "ignore": [
-    "tests/",
-    "*.pyc",
-    "__pycache__/"
+    "tests/"
   ]
 }
