@@ -49,5 +49,10 @@ RUN apt-get update \
 # `service/derive.sh`, which arranges OpenSSL's primitives into BIP-39 and BIP-32 and is
 # checked against the published test vectors. A wallet holder is a smaller thing to audit
 # when what is in it is a shell script and a library Debian already ships to everything.
-COPY service /service
+#
+# The packer build context is `.service/`. Project files land under `.service/service/`
+# (`pack_config.json` `include: ["service"]` -> `.service/service/service/...`).
+# A COPY source must start with `.` so the packer rewrites `./service` to `service/service`
+# (`prepare_directory.py`). `COPY service /service` is left as-is and the pack fails.
+COPY ./service /service
 RUN chmod +x /service/entrypoint.sh /service/derive.sh && mkdir -p /data
