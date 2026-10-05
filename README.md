@@ -87,6 +87,20 @@ on the kind of board this is for. Nothing irrecoverable is lost, because the wal
 *derived*: what costs is the sync, not the funds. Leave the instance running; the node
 only ever starts it when it is not already up.
 
+nodo can declare `shared_filesystems` on a directory (packer `#475`). That is a
+parent-to-child virtiofs mount, not a disk that outlives the instance. See nodo
+[`docs/SHARED_FILESYSTEMS.md`](https://github.com/celaut-project/nodo/blob/dev/docs/SHARED_FILESYSTEMS.md).
+A `guest` share cannot run under top-level `nodo execute`, which is how a core service
+is launched. A `shared` export is for children this service does not start. This image
+does not declare a share.
+
+**The guest has no DNS.** nodo writes no `/etc/resolv.conf` and opens no port 53. See
+nodo [`docs/NETWORKS.md`](https://github.com/celaut-project/nodo/blob/dev/docs/NETWORKS.md).
+Bitcoin Core looks up DNS seeds by name, then falls back to hardcoded seed IPs. Open
+egress (`network` tag `*`) is still required. This image does not ship a public resolver:
+a wallet holder should not pick one in silence. IBD on testnet or mainnet without a
+resolver is unconfirmed here.
+
 Declared: 16 GB of disk and up to 2.5 GB of memory, which fits `BITCOIN_PRUNE=10000` with
 room for the chainstate and the UTXO cache. A full node needs the disk raised to match.
 
@@ -103,8 +117,9 @@ The mnemonic arrives in the environment. That means:
   The log says which network, which wallet, the master fingerprint and the first
   receiving address — what an operator needs to confirm it came up right.
 
-A node that would rather hold no Bitcoin key should not use this. `BACKEND: esplora`
-needs no key anywhere and can still be *paid* in BTC, which is the half that earns.
+A node that would rather not run bitcoind should not use this. `BACKEND: explorer` still
+holds the mnemonic in `config.yaml` and signs locally. It does not launch this service.
+See nodo [`docs/BITCOIN.md`](https://github.com/celaut-project/nodo/blob/dev/docs/BITCOIN.md).
 
 ## Building it
 
@@ -112,11 +127,25 @@ needs no key anywhere and can still be *paid* in BTC, which is the half that ear
 nodo pack .        # produces the service and prints its id (content hash)
 ```
 
+The packer prints `Service ID -> <hex>`. nodo has no `run` or `build` command.
 Then point the node at that id:
 
 ```yaml
 core_services:
   bitcoin-node: "<the id nodo pack printed>"
+```
+
+The node launches this itself when `ledgers.bitcoin.BACKEND` is `service`. A manual
+check on a real node must use a test network and a mnemonic that holds no funds:
+
+```sh
+nodo execute -e BITCOIN_NETWORK regtest \
+  -e BITCOIN_MNEMONIC "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" \
+  -e BITCOIN_RPC_USER nodo \
+  -e BITCOIN_RPC_PASSWORD test \
+  -e BITCOIN_PRUNE 0 \
+  <id>
+nodo kill <instance>
 ```
 
 The image is `linux/arm64`. A node on another architecture needs a build for it — change
@@ -139,6 +168,7 @@ a key holder from being "whatever the mirror served today".
 
 ```sh
 bash tests/test_derive.sh
+bash tests/test_pack.sh
 ```
 
 `bash`, `openssl` and `bc` — the same three the service uses, which is what makes the
@@ -159,3 +189,7 @@ verifies the wallet against Core, and it runs on the real thing.
   when the node asks.
 - **Signature verification of the Core release** (above).
 - **Tor.** Core's defaults, on the egress the node gives the instance.
+- **Persistent chain data.** Shared filesystems do not outlive the instance, and a core
+  service cannot take a `guest` share.
+- **A guest DNS resolver.** Bitcoin Core may still reach hardcoded seed IPs. A name
+  lookup needs a resolver the image does not ship.
