@@ -27,7 +27,7 @@
             "tags": [
                 "*"
             ],
-            "prose": "Bitcoin's peer-to-peer network. A node finds its peers through DNS seeds and then connects to whatever addresses they hand back, so the set cannot be enumerated in advance: this needs open egress, and says so rather than declaring a list it would then have to work around."
+            "prose": "Bitcoin peer-to-peer. Peer addresses are not known in advance, so this needs open egress rather than a fixed list. The guest has no DNS. Name seeds may fail. Core also has fixed seed IPs."
         }
     ],
     "resources": {

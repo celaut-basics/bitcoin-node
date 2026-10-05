@@ -31,7 +31,7 @@ This table is the contract with the node, which builds it from the same names
 | `BITCOIN_NETWORK` | `mainnet` | `mainnet`, `testnet`, `signet` or `regtest`. Also picks the coin type. |
 | `BITCOIN_WALLET_NAME` | `nodo` | The wallet Core loads. |
 | `BITCOIN_PRUNE` | `0` | MiB of block history to keep. `0` keeps everything and builds a `txindex`. |
-| `BITCOIN_MNEMONIC_PASSPHRASE` | — | Optional BIP-39 passphrase. Unset and empty are **different wallets**. |
+| `BITCOIN_MNEMONIC_PASSPHRASE` | — | Optional BIP-39 passphrase. This service treats unset and empty as the same empty string. Nodo drops an empty value and does not send the variable. |
 | `BITCOIN_DATADIR` | `/data` | Where Core keeps the chain. |
 
 The RPC is on **8332 on every network**, so whatever launches this has one endpoint to
@@ -171,12 +171,13 @@ bash tests/test_derive.sh
 bash tests/test_pack.sh
 ```
 
-`bash`, `openssl` and `bc` — the same three the service uses, which is what makes the
-tests worth running on a workstation as well as in the image. They cover the derivation:
-the published vectors (all of BIP-39's English set and BIP-32's first four, walked down to
+`tests/test_derive.sh` needs `bash`, `openssl` and `bc` — the same three the service uses.
+`tests/test_pack.sh` also needs `python3` and `jq`. They cover the derivation: the
+published vectors (all of BIP-39's English set and BIP-32's first four, walked down to
 `m/0'/1/2'/2/1000000000`), the curve identity a non-hardened child has to satisfy, the
-encodings, the descriptors as they are handed to Core, and the `rpcauth` line against
-what Core's own `share/rpcauth/rpcauth.py` produces for a fixed salt.
+encodings, the descriptors as they are handed to Core, the `rpcauth` line against what
+Core's own `share/rpcauth/rpcauth.py` produces for a fixed salt, and the packer COPY
+rewrite.
 
 What they do **not** cover is anything past that boundary — no bitcoind is started, no
 chain is synced, no transaction is signed. The service's own startup check is what
