@@ -1,3 +1,9 @@
+# linux/arm64 variant. nodo builds it with --opt platform=linux/arm64 (from
+# service.json). The debian:bookworm-slim digest below is a multi-arch index
+# (linux/amd64 + linux/arm64/v8), so the same pin resolves to the linux/arm64
+# image. Only the Bitcoin Core tarball (aarch64) and its checksum are
+# specific to this architecture.
+
 # Every dependency is pinned, and the two that matter are pinned by digest and by
 # checksum. This service is content-addressed -- two packs of the same source tree must
 # produce the same image -- and the image holds a wallet, so "whatever was on that tag
