@@ -43,8 +43,8 @@ RUN echo "${BITCOIN_SHA256}  /tmp/bitcoin.tar.gz" | sha256sum -c - \
 # for the base image, made once more.
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
-        openssl=3.0.20-1~deb12u2 \
-        libssl3=3.0.20-1~deb12u2 \
+        openssl=3.0.22-1~deb12u1 \
+        libssl3=3.0.22-1~deb12u1 \
         bc=1.07.1-3 \
         jq=1.6-2.1+deb12u2 \
         libjq1=1.6-2.1+deb12u2 \
