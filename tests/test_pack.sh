@@ -11,9 +11,6 @@ set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "${HERE}/.." && pwd)
-SERVICE_JSON="${ROOT}/.service/service.json"
-PACK_CONFIG="${ROOT}/.service/pack_config.json"
-DOCKERFILE="${ROOT}/.service/Dockerfile"
 README="${ROOT}/README.md"
 
 PASSED=0
@@ -72,53 +69,69 @@ print(" ".join(parts))
 ' "$1"
 }
 
-echo 'JSON'
-python3 -m json.tool "${SERVICE_JSON}" >/dev/null && ok 'service.json parses' || no 'service.json parses' 'valid JSON' 'parse error'
-python3 -m json.tool "${PACK_CONFIG}" >/dev/null && ok 'pack_config.json parses' || no 'pack_config.json parses' 'valid JSON' 'parse error'
+check_arch() {
+    ARCH=$1
+    TARBALL_ARCH=$2
+    SERVICE_JSON="${ROOT}/${ARCH}/.service/service.json"
+    PACK_CONFIG="${ROOT}/${ARCH}/.service/pack_config.json"
+    DOCKERFILE="${ROOT}/${ARCH}/.service/Dockerfile"
+    echo "== ${ARCH}"
+    echo 'JSON'
+    python3 -m json.tool "${SERVICE_JSON}" >/dev/null && ok 'service.json parses' || no 'service.json parses' 'valid JSON' 'parse error'
+    python3 -m json.tool "${PACK_CONFIG}" >/dev/null && ok 'pack_config.json parses' || no 'pack_config.json parses' 'valid JSON' 'parse error'
 
+    echo
+    echo 'service.json shape'
+    is "$(jq -r '.architecture' "${SERVICE_JSON}")" "linux/${ARCH}" "architecture is linux/${ARCH}"
+    is "$(jq -r '.tag' "${SERVICE_JSON}")" 'bitcoin-node' 'tag is bitcoin-node'
+    is "$(jq -c '.init.entry_path' "${SERVICE_JSON}")" '["service","entrypoint.sh"]' 'entry_path is /service/entrypoint.sh'
+    is "$(jq -r '.api[0].port' "${SERVICE_JSON}")" '8332' 'RPC slot is 8332'
+    is "$(jq -r '.api[0].protocol[0]' "${SERVICE_JSON}")" 'http' 'RPC protocol is http'
+    is "$(jq -r '.network[0].tags[0]' "${SERVICE_JSON}")" '*' 'egress is open (*)'
+    prose=$(jq -r '.network[0].prose' "${SERVICE_JSON}")
+    isnt_empty=$( [ -n "$prose" ] && printf 'yes' || printf 'no' )
+    is "$isnt_empty" 'yes' 'network prose is present'
+    is "$(jq -r 'has("shared_filesystems")' "${SERVICE_JSON}")" 'false' \
+       'no shared_filesystems (a guest share cannot run as a core service)'
+
+    for name in BITCOIN_MNEMONIC BITCOIN_MNEMONIC_PASSPHRASE BITCOIN_NETWORK \
+                BITCOIN_PRUNE BITCOIN_RPC_USER BITCOIN_RPC_PASSWORD BITCOIN_WALLET_NAME; do
+        jq -e --arg n "$name" '.envs | index($n) != null' "${SERVICE_JSON}" >/dev/null \
+            && ok "envs names ${name}" \
+            || no "envs names ${name}" "$name" 'missing'
+    done
+
+    echo
+    echo 'pack_config.json'
+    is "$(jq -r '.include[0]' "${PACK_CONFIG}")" 'service' 'include packs the service/ tree'
+    is "$(jq -r '.zip' "${PACK_CONFIG}")" 'false' 'dependencies are not zipped'
+
+    echo
+    echo 'Dockerfile COPY rewrite'
+    copy_line=$(grep -E '^COPY ' "${DOCKERFILE}" | grep -v -- '--from' | head -n1)
+    contains "$copy_line" 'COPY ./service /service' 'COPY source is ./service'
+    rewritten=$(rewrite_copy_sources "$copy_line")
+    is "$rewritten" 'COPY service/service /service' \
+       'packer rewrites ./service to service/service'
+
+    bad_line='COPY service /service'
+    bad_rewritten=$(rewrite_copy_sources "$bad_line")
+    is "$bad_rewritten" 'COPY service /service' \
+       'COPY service (no leading .) is left as-is and would miss the scripts'
+
+    grep -q "bitcoin-\${BITCOIN_VERSION}-${TARBALL_ARCH}-linux-gnu.tar.gz" "${DOCKERFILE}" \
+        && ok "Dockerfile downloads the ${TARBALL_ARCH} tarball" \
+        || no "Dockerfile downloads the ${TARBALL_ARCH} tarball" "${TARBALL_ARCH}" 'other tarball'
+    grep -q 'mkdir -p /data' "${DOCKERFILE}" && ok 'image creates /data' || no 'image creates /data' 'mkdir -p /data' 'missing'
+    grep -q 'chmod +x /service/entrypoint.sh' "${DOCKERFILE}" \
+        && ok 'entrypoint is marked executable in the image' \
+        || no 'entrypoint is marked executable in the image' 'chmod +x /service/entrypoint.sh' 'missing'
+
+}
+
+check_arch arm64 aarch64
 echo
-echo 'service.json shape'
-is "$(jq -r '.architecture' "${SERVICE_JSON}")" 'linux/arm64' 'architecture is linux/arm64'
-is "$(jq -r '.tag' "${SERVICE_JSON}")" 'bitcoin-node' 'tag is bitcoin-node'
-is "$(jq -c '.init.entry_path' "${SERVICE_JSON}")" '["service","entrypoint.sh"]' 'entry_path is /service/entrypoint.sh'
-is "$(jq -r '.api[0].port' "${SERVICE_JSON}")" '8332' 'RPC slot is 8332'
-is "$(jq -r '.api[0].protocol[0]' "${SERVICE_JSON}")" 'http' 'RPC protocol is http'
-is "$(jq -r '.network[0].tags[0]' "${SERVICE_JSON}")" '*' 'egress is open (*)'
-prose=$(jq -r '.network[0].prose' "${SERVICE_JSON}")
-isnt_empty=$( [ -n "$prose" ] && printf 'yes' || printf 'no' )
-is "$isnt_empty" 'yes' 'network prose is present'
-is "$(jq -r 'has("shared_filesystems")' "${SERVICE_JSON}")" 'false' \
-   'no shared_filesystems (a guest share cannot run as a core service)'
-
-for name in BITCOIN_MNEMONIC BITCOIN_MNEMONIC_PASSPHRASE BITCOIN_NETWORK \
-            BITCOIN_PRUNE BITCOIN_RPC_USER BITCOIN_RPC_PASSWORD BITCOIN_WALLET_NAME; do
-    jq -e --arg n "$name" '.envs | index($n) != null' "${SERVICE_JSON}" >/dev/null \
-        && ok "envs names ${name}" \
-        || no "envs names ${name}" "$name" 'missing'
-done
-
-echo
-echo 'pack_config.json'
-is "$(jq -r '.include[0]' "${PACK_CONFIG}")" 'service' 'include packs the service/ tree'
-is "$(jq -r '.zip' "${PACK_CONFIG}")" 'false' 'dependencies are not zipped'
-
-echo
-echo 'Dockerfile COPY rewrite'
-copy_line=$(grep -E '^COPY ' "${DOCKERFILE}" | grep -v -- '--from' | head -n1)
-contains "$copy_line" 'COPY ./service /service' 'COPY source is ./service'
-rewritten=$(rewrite_copy_sources "$copy_line")
-is "$rewritten" 'COPY service/service /service' \
-   'packer rewrites ./service to service/service'
-
-bad_line='COPY service /service'
-bad_rewritten=$(rewrite_copy_sources "$bad_line")
-is "$bad_rewritten" 'COPY service /service' \
-   'COPY service (no leading .) is left as-is and would miss the scripts'
-
-grep -q 'mkdir -p /data' "${DOCKERFILE}" && ok 'image creates /data' || no 'image creates /data' 'mkdir -p /data' 'missing'
-grep -q 'chmod +x /service/entrypoint.sh' "${DOCKERFILE}" \
-    && ok 'entrypoint is marked executable in the image' \
-    || no 'entrypoint is marked executable in the image' 'chmod +x /service/entrypoint.sh' 'missing'
+check_arch amd64 x86_64
 
 echo
 echo 'Scripts on disk'
@@ -133,7 +146,8 @@ head -n1 "${ROOT}/service/entrypoint.sh" | grep -q bash \
 echo
 echo 'README CLI and contract'
 readme=$(cat "${README}")
-contains "$readme" 'nodo pack .' 'README uses nodo pack'
+contains "$readme" 'nodo pack amd64' 'README uses nodo pack amd64'
+contains "$readme" 'nodo pack arm64' 'README uses nodo pack arm64'
 contains "$readme" 'nodo execute' 'README uses nodo execute'
 contains "$readme" 'nodo kill' 'README uses nodo kill'
 contains "$readme" 'BACKEND: explorer' 'README names BACKEND explorer'
