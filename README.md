@@ -124,8 +124,25 @@ See nodo [`docs/BITCOIN.md`](https://github.com/celaut-project/nodo/blob/dev/doc
 ## Building it
 
 ```sh
-nodo pack .        # produces the service and prints its id (content hash)
+nodo pack amd64    # linux/amd64; prints the service id (content hash)
+nodo pack arm64    # linux/arm64
 ```
+
+Pack the tree of the node's architecture. The repo has one pack root for each
+architecture, as in `celaut-basics/demo-service`:
+
+```
+amd64/  arm64/           pack roots
+├── .service/            Dockerfile, service.json, pack_config.json (one set per arch)
+└── service -> ../service
+service/                 shared scripts (entrypoint.sh, derive.sh)
+```
+
+`nodo pack <dir>` reads only `<dir>/.service/` and copies `<dir>` to its cache. The
+copy follows symlinks, so `service/` reaches each pack root. The two Dockerfiles differ
+only in the Bitcoin Core tarball (`x86_64` or `aarch64`) and its checksum. The base
+image pin is a multi-arch index. `tests/test_layout.py` checks the shape. To pack the
+architecture that is not the host's, the packer host needs a binfmt_misc handler for it.
 
 The packer prints `Service ID -> <hex>`. nodo has no `run` or `build` command.
 Then point the node at that id:
@@ -148,10 +165,6 @@ nodo execute -e BITCOIN_NETWORK regtest \
 nodo kill <instance>
 ```
 
-The image is `linux/arm64`. A node on another architecture needs a build for it — change
-`architecture` in `.service/service.json` and the tarball in `.service/Dockerfile` to
-match, since the Core release is per platform.
-
 Bitcoin Core is pinned by version **and** by the SHA256 from that release's own
 `SHA256SUMS`; the base image (`debian:bookworm-slim`) is pinned by digest, and the four
 packages installed on top of it — `openssl`, `bc`, `jq` and the two libraries they pull —
@@ -169,6 +182,7 @@ a key holder from being "whatever the mirror served today".
 ```sh
 bash tests/test_derive.sh
 bash tests/test_pack.sh
+python3 -m unittest tests.test_layout
 ```
 
 `tests/test_derive.sh` needs `bash`, `openssl` and `bc` — the same three the service uses.
