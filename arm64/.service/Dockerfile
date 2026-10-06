@@ -1,3 +1,9 @@
+# linux/arm64 variant. nodo builds it with --opt platform=linux/arm64 (from
+# service.json). The debian:bookworm-slim digest below is a multi-arch index
+# (linux/amd64 + linux/arm64/v8), so the same pin resolves to the linux/arm64
+# image. Only the Bitcoin Core tarball (aarch64) and its checksum are
+# specific to this architecture.
+
 # Every dependency is pinned, and the two that matter are pinned by digest and by
 # checksum. This service is content-addressed -- two packs of the same source tree must
 # produce the same image -- and the image holds a wallet, so "whatever was on that tag
@@ -37,8 +43,8 @@ RUN echo "${BITCOIN_SHA256}  /tmp/bitcoin.tar.gz" | sha256sum -c - \
 # for the base image, made once more.
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
-        openssl=3.0.20-1~deb12u2 \
-        libssl3=3.0.20-1~deb12u2 \
+        openssl=3.0.22-1~deb12u1 \
+        libssl3=3.0.22-1~deb12u1 \
         bc=1.07.1-3 \
         jq=1.6-2.1+deb12u2 \
         libjq1=1.6-2.1+deb12u2 \
@@ -49,5 +55,10 @@ RUN apt-get update \
 # `service/derive.sh`, which arranges OpenSSL's primitives into BIP-39 and BIP-32 and is
 # checked against the published test vectors. A wallet holder is a smaller thing to audit
 # when what is in it is a shell script and a library Debian already ships to everything.
-COPY service /service
+#
+# The packer build context is `.service/`. Project files land under `.service/service/`
+# (`pack_config.json` `include: ["service"]` -> `.service/service/service/...`).
+# A COPY source must start with `.` so the packer rewrites `./service` to `service/service`
+# (`prepare_directory.py`). `COPY service /service` is left as-is and the pack fails.
+COPY ./service /service
 RUN chmod +x /service/entrypoint.sh /service/derive.sh && mkdir -p /data

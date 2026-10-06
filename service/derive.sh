@@ -215,7 +215,7 @@ derive_serialize() {   # version_hex depth index chaincode_hex key_hex private(0
 #
 # The DER is built and consumed inside a pipe. It is never a file and never an argument.
 derive_pubkey() {   # private key hex -> 33-byte compressed public key hex
-    local der public
+    local public
     public=$(derive_unhex "302e0201010420${1}a00706052b8104000a" \
         | openssl ec -inform DER -pubout -conv_form compressed -outform DER 2>/dev/null \
         | derive_hex_stdin)

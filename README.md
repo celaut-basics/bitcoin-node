@@ -31,7 +31,7 @@ This table is the contract with the node, which builds it from the same names
 | `BITCOIN_NETWORK` | `mainnet` | `mainnet`, `testnet`, `signet` or `regtest`. Also picks the coin type. |
 | `BITCOIN_WALLET_NAME` | `nodo` | The wallet Core loads. |
 | `BITCOIN_PRUNE` | `0` | MiB of block history to keep. `0` keeps everything and builds a `txindex`. |
-| `BITCOIN_MNEMONIC_PASSPHRASE` | — | Optional BIP-39 passphrase. Unset and empty are **different wallets**. |
+| `BITCOIN_MNEMONIC_PASSPHRASE` | — | Optional BIP-39 passphrase. This service treats unset and empty as the same empty string. Nodo drops an empty value and does not send the variable. |
 | `BITCOIN_DATADIR` | `/data` | Where Core keeps the chain. |
 
 The RPC is on **8332 on every network**, so whatever launches this has one endpoint to
@@ -87,6 +87,20 @@ on the kind of board this is for. Nothing irrecoverable is lost, because the wal
 *derived*: what costs is the sync, not the funds. Leave the instance running; the node
 only ever starts it when it is not already up.
 
+nodo can declare `shared_filesystems` on a directory (packer `#475`). That is a
+parent-to-child virtiofs mount, not a disk that outlives the instance. See nodo
+[`docs/SHARED_FILESYSTEMS.md`](https://github.com/celaut-project/nodo/blob/dev/docs/SHARED_FILESYSTEMS.md).
+A `guest` share cannot run under top-level `nodo execute`, which is how a core service
+is launched. A `shared` export is for children this service does not start. This image
+does not declare a share.
+
+**The guest has no DNS.** nodo writes no `/etc/resolv.conf` and opens no port 53. See
+nodo [`docs/NETWORKS.md`](https://github.com/celaut-project/nodo/blob/dev/docs/NETWORKS.md).
+Bitcoin Core looks up DNS seeds by name, then falls back to hardcoded seed IPs. Open
+egress (`network` tag `*`) is still required. This image does not ship a public resolver:
+a wallet holder should not pick one in silence. IBD on testnet or mainnet without a
+resolver is unconfirmed here.
+
 Declared: 16 GB of disk and up to 2.5 GB of memory, which fits `BITCOIN_PRUNE=10000` with
 room for the chainstate and the UTXO cache. A full node needs the disk raised to match.
 
@@ -103,15 +117,34 @@ The mnemonic arrives in the environment. That means:
   The log says which network, which wallet, the master fingerprint and the first
   receiving address — what an operator needs to confirm it came up right.
 
-A node that would rather hold no Bitcoin key should not use this. `BACKEND: esplora`
-needs no key anywhere and can still be *paid* in BTC, which is the half that earns.
+A node that would rather not run bitcoind should not use this. `BACKEND: explorer` still
+holds the mnemonic in `config.yaml` and signs locally. It does not launch this service.
+See nodo [`docs/BITCOIN.md`](https://github.com/celaut-project/nodo/blob/dev/docs/BITCOIN.md).
 
 ## Building it
 
 ```sh
-nodo pack .        # produces the service and prints its id (content hash)
+nodo pack amd64    # linux/amd64; prints the service id (content hash)
+nodo pack arm64    # linux/arm64
 ```
 
+Pack the tree of the node's architecture. The repo has one pack root for each
+architecture, as in `celaut-basics/demo-service`:
+
+```
+amd64/  arm64/           pack roots
+├── .service/            Dockerfile, service.json, pack_config.json (one set per arch)
+└── service -> ../service
+service/                 shared scripts (entrypoint.sh, derive.sh)
+```
+
+`nodo pack <dir>` reads only `<dir>/.service/` and copies `<dir>` to its cache. The
+copy follows symlinks, so `service/` reaches each pack root. The two Dockerfiles differ
+only in the Bitcoin Core tarball (`x86_64` or `aarch64`) and its checksum. The base
+image pin is a multi-arch index. `tests/test_layout.py` checks the shape. To pack the
+architecture that is not the host's, the packer host needs a binfmt_misc handler for it.
+
+The packer prints `Service ID -> <hex>`. nodo has no `run` or `build` command.
 Then point the node at that id:
 
 ```yaml
@@ -119,9 +152,18 @@ core_services:
   bitcoin-node: "<the id nodo pack printed>"
 ```
 
-The image is `linux/arm64`. A node on another architecture needs a build for it — change
-`architecture` in `.service/service.json` and the tarball in `.service/Dockerfile` to
-match, since the Core release is per platform.
+The node launches this itself when `ledgers.bitcoin.BACKEND` is `service`. A manual
+check on a real node must use a test network and a mnemonic that holds no funds:
+
+```sh
+nodo execute -e BITCOIN_NETWORK regtest \
+  -e BITCOIN_MNEMONIC "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" \
+  -e BITCOIN_RPC_USER nodo \
+  -e BITCOIN_RPC_PASSWORD test \
+  -e BITCOIN_PRUNE 0 \
+  <id>
+nodo kill <instance>
+```
 
 Bitcoin Core is pinned by version **and** by the SHA256 from that release's own
 `SHA256SUMS`; the base image (`debian:bookworm-slim`) is pinned by digest, and the four
@@ -139,14 +181,17 @@ a key holder from being "whatever the mirror served today".
 
 ```sh
 bash tests/test_derive.sh
+bash tests/test_pack.sh
+python3 -m unittest tests.test_layout
 ```
 
-`bash`, `openssl` and `bc` — the same three the service uses, which is what makes the
-tests worth running on a workstation as well as in the image. They cover the derivation:
-the published vectors (all of BIP-39's English set and BIP-32's first four, walked down to
+`tests/test_derive.sh` needs `bash`, `openssl` and `bc` — the same three the service uses.
+`tests/test_pack.sh` also needs `python3` and `jq`. They cover the derivation: the
+published vectors (all of BIP-39's English set and BIP-32's first four, walked down to
 `m/0'/1/2'/2/1000000000`), the curve identity a non-hardened child has to satisfy, the
-encodings, the descriptors as they are handed to Core, and the `rpcauth` line against
-what Core's own `share/rpcauth/rpcauth.py` produces for a fixed salt.
+encodings, the descriptors as they are handed to Core, the `rpcauth` line against what
+Core's own `share/rpcauth/rpcauth.py` produces for a fixed salt, and the packer COPY
+rewrite.
 
 What they do **not** cover is anything past that boundary — no bitcoind is started, no
 chain is synced, no transaction is signed. The service's own startup check is what
@@ -159,3 +204,7 @@ verifies the wallet against Core, and it runs on the real thing.
   when the node asks.
 - **Signature verification of the Core release** (above).
 - **Tor.** Core's defaults, on the egress the node gives the instance.
+- **Persistent chain data.** Shared filesystems do not outlive the instance, and a core
+  service cannot take a `guest` share.
+- **A guest DNS resolver.** Bitcoin Core may still reach hardcoded seed IPs. A name
+  lookup needs a resolver the image does not ship.

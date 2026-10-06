@@ -1,0 +1,43 @@
+{
+    "tag": "bitcoin-node",
+    "architecture": "linux/amd64",
+    "init": {
+        "entry_path": ["service", "entrypoint.sh"]
+    },
+    "api": [
+        {
+            "port": 8332,
+            "transport": "tcp",
+            "protocol": [
+                "http"
+            ]
+        }
+    ],
+    "envs": [
+        "BITCOIN_MNEMONIC",
+        "BITCOIN_MNEMONIC_PASSPHRASE",
+        "BITCOIN_NETWORK",
+        "BITCOIN_PRUNE",
+        "BITCOIN_RPC_USER",
+        "BITCOIN_RPC_PASSWORD",
+        "BITCOIN_WALLET_NAME"
+    ],
+    "network": [
+        {
+            "tags": [
+                "*"
+            ],
+            "prose": "Bitcoin peer-to-peer. Peer addresses are not known in advance, so this needs open egress rather than a fixed list. The guest has no DNS. Name seeds may fail. Core also has fixed seed IPs."
+        }
+    ],
+    "resources": {
+        "at_init": {
+            "mem_limit": 1500000000,
+            "disk_space": 16000000000
+        },
+        "at_most": {
+            "mem_limit": 2500000000,
+            "disk_space": 16000000000
+        }
+    }
+}
