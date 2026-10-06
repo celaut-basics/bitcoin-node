@@ -41,11 +41,14 @@ RUN echo "${BITCOIN_SHA256}  /tmp/bitcoin.tar.gz" | sha256sum -c - \
 # this image -- and equally that the build stops until this file is edited when the old
 # version leaves the mirror. That is the trade this service already makes for Core and
 # for the base image, made once more.
+#
+# The Debian version of bc is per architecture: 1.07.1-3+b1 on amd64 (a binary-only
+# rebuild), 1.07.1-3 on arm64.
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         openssl=3.0.22-1~deb12u1 \
         libssl3=3.0.22-1~deb12u1 \
-        bc=1.07.1-3 \
+        bc=1.07.1-3+b1 \
         jq=1.6-2.1+deb12u2 \
         libjq1=1.6-2.1+deb12u2 \
         libonig5=6.9.8-1 \
