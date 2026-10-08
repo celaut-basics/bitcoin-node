@@ -114,8 +114,11 @@ the network and the prune value (`service/disk.sh`). If the chain cannot fit, it
 with a clear message that gives the two numbers, for example:
 
 ```
-[bitcoin-node] FATAL: not enough disk for signet with BITCOIN_PRUNE=0 (the whole chain and a txindex). It needs about 32.4 GB in /data, and /data has 31.2 GB. ...
+[bitcoin-node] FATAL: not enough disk for testnet with BITCOIN_PRUNE=10000 MiB. It needs about 31.4 GB in /data, and /data has 31.1 GB. Give the instance more disk (resources.disk_space in service.json), or set a smaller BITCOIN_PRUNE (550 MiB or more).
 ```
+
+That message is from a real node run (2026-10-08): with the declared 32 GB, the guest
+has 31.1 GB free in `/data`.
 
 The need is the prune value (or the whole block data), plus the chainstate, plus 2 GB.
 The sizes are Bitcoin Core's own estimates for the pinned release (`chainparams.cpp` of
@@ -130,8 +133,8 @@ v31.1). A whole chain also adds 10 % of the block data for the `txindex`.
 
 The whole chain stays possible: set `BITCOIN_PRUNE=0` and raise `disk_space` in
 `<arch>/.service/service.json` to the need in the table, then pack again. On testnet3 the
-default prune is close to the declared disk; use a smaller `BITCOIN_PRUNE` there, or a
-larger disk.
+default prune does not fit the declared disk (31.4 GB against 31.1 GB free): set
+`BITCOIN_PRUNE=9000` or less there, or give a larger disk.
 
 ## Where the secret is
 
