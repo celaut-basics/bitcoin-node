@@ -27,6 +27,8 @@ set -euo pipefail
 
 # shellcheck source=derive.sh
 . "$(dirname "$(readlink -f "$0")")/derive.sh"
+# shellcheck source=disk.sh
+. "$(dirname "$(readlink -f "$0")")/disk.sh"
 
 DATA_DIR="${BITCOIN_DATADIR:-/data}"
 CONF_PATH="${DATA_DIR}/bitcoin.conf"
@@ -38,6 +40,10 @@ RPC_PORT=8332
 # Core's own floor. Below it bitcoind refuses to start, and a service that never comes up
 # is a worse way to learn that than a message here.
 MIN_PRUNE_MIB=550
+
+# The prune when BITCOIN_PRUNE is not set: the value nodo's own ledger backend passes
+# (PRUNE_MIB in nodo docs/BITCOIN.md). It fits the declared disk on mainnet.
+DEFAULT_PRUNE_MIB=10000
 
 CORE_PID=''
 STOPPING=''
@@ -98,7 +104,7 @@ read_environment() {
     raw_prune="${raw_prune#"${raw_prune%%[![:space:]]*}"}"
     raw_prune="${raw_prune%"${raw_prune##*[![:space:]]}"}"
     if [ -z "$raw_prune" ]; then
-        PRUNE=0
+        PRUNE=$DEFAULT_PRUNE_MIB
     else
         case "$raw_prune" in
             ''|*[!0-9]*) fail "BITCOIN_PRUNE='${raw_prune}' is not a whole number of MiB" ;;
@@ -113,6 +119,18 @@ read_environment() {
     WALLET="${WALLET#"${WALLET%%[![:space:]]*}"}"
     WALLET="${WALLET%"${WALLET##*[![:space:]]}"}"
     WALLET="${WALLET:-nodo}"
+}
+
+# ------------------------------------------------------------------------ disk
+# Stop at start if the chain cannot fit, not hours into the sync. See disk.sh.
+check_disk() {
+    mkdir -p "$DATA_DIR"
+    local status=0
+    disk_check "$DATA_DIR" "$CHAIN" "$NETWORK" "$PRUNE" || status=$?
+    case "$status" in
+        0) log "disk: ${NETWORK} needs about $(disk_gb "$DISK_NEED") GB, ${DATA_DIR} has $(disk_gb "$DISK_HAVE") GB" ;;
+        *) fail "$DISK_MESSAGE" ;;
+    esac
 }
 
 # --------------------------------------------------------------- configuration
@@ -366,6 +384,7 @@ on_signal() {
 
 main() {
     read_environment
+    check_disk
     write_configuration
 
     bitcoind "-conf=${CONF_PATH}" "-datadir=${DATA_DIR}" -printtoconsole &
