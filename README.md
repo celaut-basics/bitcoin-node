@@ -98,8 +98,11 @@ does not declare a share.
 nodo [`docs/NETWORKS.md`](https://github.com/celaut-project/nodo/blob/dev/docs/NETWORKS.md).
 Bitcoin Core looks up DNS seeds by name, then falls back to hardcoded seed IPs. Open
 egress (`network` tag `*`) is still required. This image does not ship a public resolver:
-a wallet holder should not pick one in silence. IBD on testnet or mainnet without a
-resolver is unconfirmed here.
+a wallet holder should not pick one in silence. A real node run (2026-10-08, `v1`,
+no resolver in the guest) confirms that IBD starts without DNS: on signet, Core had 4
+outbound peers and all headers at the first sample, and 10 peers after 15 minutes. On
+testnet3, it had its first peer 20 seconds after RPC came up and all 5157421 headers
+after 10 minutes. Mainnet did not run (test networks only).
 
 Declared: 16 GB of disk and up to 2.5 GB of memory, which fits `BITCOIN_PRUNE=10000` with
 room for the chainstate and the UTXO cache. A full node needs the disk raised to match.
@@ -206,5 +209,6 @@ verifies the wallet against Core, and it runs on the real thing.
 - **Tor.** Core's defaults, on the egress the node gives the instance.
 - **Persistent chain data.** Shared filesystems do not outlive the instance, and a core
   service cannot take a `guest` share.
-- **A guest DNS resolver.** Bitcoin Core may still reach hardcoded seed IPs. A name
-  lookup needs a resolver the image does not ship.
+- **A guest DNS resolver.** Core finds peers from its hardcoded seed IPs and from the
+  addresses that peers send (see above). A name lookup needs a resolver the image does
+  not ship.
