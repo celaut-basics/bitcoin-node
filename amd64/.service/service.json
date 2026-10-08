@@ -33,11 +33,11 @@
     "resources": {
         "at_init": {
             "mem_limit": 1500000000,
-            "disk_space": 16000000000
+            "disk_space": 32000000000
         },
         "at_most": {
             "mem_limit": 2500000000,
-            "disk_space": 16000000000
+            "disk_space": 32000000000
         }
     }
 }
