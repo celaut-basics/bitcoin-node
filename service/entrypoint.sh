@@ -27,6 +27,8 @@ set -euo pipefail
 
 # shellcheck source=derive.sh
 . "$(dirname "$(readlink -f "$0")")/derive.sh"
+# shellcheck source=disk.sh
+. "$(dirname "$(readlink -f "$0")")/disk.sh"
 
 DATA_DIR="${BITCOIN_DATADIR:-/data}"
 CONF_PATH="${DATA_DIR}/bitcoin.conf"
@@ -113,6 +115,18 @@ read_environment() {
     WALLET="${WALLET#"${WALLET%%[![:space:]]*}"}"
     WALLET="${WALLET%"${WALLET##*[![:space:]]}"}"
     WALLET="${WALLET:-nodo}"
+}
+
+# ------------------------------------------------------------------------ disk
+# Stop at start if the chain cannot fit, not hours into the sync. See disk.sh.
+check_disk() {
+    mkdir -p "$DATA_DIR"
+    local status=0
+    disk_check "$DATA_DIR" "$CHAIN" "$NETWORK" "$PRUNE" || status=$?
+    case "$status" in
+        0) log "disk: ${NETWORK} needs about $(disk_gb "$DISK_NEED") GB, ${DATA_DIR} has $(disk_gb "$DISK_HAVE") GB" ;;
+        *) fail "$DISK_MESSAGE" ;;
+    esac
 }
 
 # --------------------------------------------------------------- configuration
@@ -366,6 +380,7 @@ on_signal() {
 
 main() {
     read_environment
+    check_disk
     write_configuration
 
     bitcoind "-conf=${CONF_PATH}" "-datadir=${DATA_DIR}" -printtoconsole &
