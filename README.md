@@ -30,7 +30,7 @@ This table is the contract with the node, which builds it from the same names
 | `BITCOIN_RPC_PASSWORD` | **required** | Stored in `bitcoin.conf` as a salted `rpcauth`, never in plaintext. |
 | `BITCOIN_NETWORK` | `mainnet` | `mainnet`, `testnet`, `signet` or `regtest`. Also picks the coin type. |
 | `BITCOIN_WALLET_NAME` | `nodo` | The wallet Core loads. |
-| `BITCOIN_PRUNE` | `0` | MiB of block history to keep. `0` keeps everything and builds a `txindex`. |
+| `BITCOIN_PRUNE` | `10000` | MiB of block history to keep (550 or more). `0` keeps everything and builds a `txindex`; that needs a larger disk (see below). |
 | `BITCOIN_MNEMONIC_PASSPHRASE` | — | Optional BIP-39 passphrase. This service treats unset and empty as the same empty string. Nodo drops an empty value and does not send the variable. |
 | `BITCOIN_DATADIR` | `/data` | Where Core keeps the chain. |
 
@@ -77,7 +77,7 @@ Two things are worth knowing before setting `BITCOIN_PRUNE`, and neither is a bu
 
 **A pruned node cannot rescan.** The wallet is imported with `timestamp: "now"`, so it
 sees only payments made from then on. Reuse a mnemonic that already has history and those
-funds will not appear: that needs `BITCOIN_PRUNE=0` (the whole chain, ~700 GB) or a
+funds will not appear: that needs `BITCOIN_PRUNE=0` (the whole chain and a `txindex`, about 960 GB on mainnet; see "Disk and prune") or a
 rescan done elsewhere. **Generate a fresh mnemonic** and there is nothing to rescan —
 which is what the node does by default.
 
@@ -104,8 +104,34 @@ outbound peers and all headers at the first sample, and 10 peers after 15 minute
 testnet3, it had its first peer 20 seconds after RPC came up and all 5157421 headers
 after 10 minutes. Mainnet did not run (test networks only).
 
-Declared: 16 GB of disk and up to 2.5 GB of memory, which fits `BITCOIN_PRUNE=10000` with
-room for the chainstate and the UTXO cache. A full node needs the disk raised to match.
+**Disk and prune.** Declared: 32 GB of disk and up to 2.5 GB of memory. When
+`BITCOIN_PRUNE` is not set, the prune is 10000 MiB, the same value that nodo's own ledger
+backend passes (`PRUNE_MIB` in nodo `docs/BITCOIN.md`). On mainnet that is about 26.4 GB:
+10000 MiB of blocks, about 14 GB of chainstate, and 2 GB of headroom.
+
+At start, before Core downloads anything, the service compares the disk with the need of
+the network and the prune value (`service/disk.sh`). If the chain cannot fit, it stops
+with a clear message that gives the two numbers, for example:
+
+```
+[bitcoin-node] FATAL: not enough disk for signet with BITCOIN_PRUNE=0 (the whole chain and a txindex). It needs about 32.4 GB in /data, and /data has 31.2 GB. ...
+```
+
+The need is the prune value (or the whole block data), plus the chainstate, plus 2 GB.
+The sizes are Bitcoin Core's own estimates for the pinned release (`chainparams.cpp` of
+v31.1). A whole chain also adds 10 % of the block data for the `txindex`.
+
+| network | block data | chainstate | need with the default prune | need with `BITCOIN_PRUNE=0` |
+|---|---|---|---|---|
+| mainnet | 856 GB | 14 GB | 26.4 GB | 957.6 GB |
+| testnet (testnet3) | 245 GB | 19 GB | 31.4 GB | 290.5 GB |
+| signet | 24 GB | 4 GB | 16.4 GB | 32.4 GB |
+| regtest | 0 | 0 | 2 GB | 2 GB |
+
+The whole chain stays possible: set `BITCOIN_PRUNE=0` and raise `disk_space` in
+`<arch>/.service/service.json` to the need in the table, then pack again. On testnet3 the
+default prune is close to the declared disk; use a smaller `BITCOIN_PRUNE` there, or a
+larger disk.
 
 ## Where the secret is
 
@@ -184,6 +210,7 @@ a key holder from being "whatever the mirror served today".
 
 ```sh
 bash tests/test_derive.sh
+bash tests/test_disk.sh
 bash tests/test_pack.sh
 python3 -m unittest tests.test_layout
 ```
@@ -194,7 +221,9 @@ published vectors (all of BIP-39's English set and BIP-32's first four, walked d
 `m/0'/1/2'/2/1000000000`), the curve identity a non-hardened child has to satisfy, the
 encodings, the descriptors as they are handed to Core, the `rpcauth` line against what
 Core's own `share/rpcauth/rpcauth.py` produces for a fixed salt, and the packer COPY
-rewrite.
+rewrite. `tests/test_disk.sh` (needs `bash`, coreutils and `jq`) covers the disk need for
+each network and prune value, the declared disk, and the message when the chain does not
+fit.
 
 What they do **not** cover is anything past that boundary — no bitcoind is started, no
 chain is synced, no transaction is signed. The service's own startup check is what
