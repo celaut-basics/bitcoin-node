@@ -41,6 +41,10 @@ RPC_PORT=8332
 # is a worse way to learn that than a message here.
 MIN_PRUNE_MIB=550
 
+# The prune when BITCOIN_PRUNE is not set: the value nodo's own ledger backend passes
+# (PRUNE_MIB in nodo docs/BITCOIN.md). It fits the declared disk on mainnet.
+DEFAULT_PRUNE_MIB=10000
+
 CORE_PID=''
 STOPPING=''
 # Core's own exit status, once something has collected it. A service that stopped cleanly
@@ -100,7 +104,7 @@ read_environment() {
     raw_prune="${raw_prune#"${raw_prune%%[![:space:]]*}"}"
     raw_prune="${raw_prune%"${raw_prune##*[![:space:]]}"}"
     if [ -z "$raw_prune" ]; then
-        PRUNE=0
+        PRUNE=$DEFAULT_PRUNE_MIB
     else
         case "$raw_prune" in
             ''|*[!0-9]*) fail "BITCOIN_PRUNE='${raw_prune}' is not a whole number of MiB" ;;
