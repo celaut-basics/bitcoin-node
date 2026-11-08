@@ -38,11 +38,20 @@ RUN echo "${BITCOIN_SHA256}  /tmp/bitcoin.tar.gz" | sha256sum -c - \
 #  jq       Core's JSON-RPC answers, read without a JSON parser written in shell.
 #
 # Pinning to the patch version means a Debian security update does not silently change
-# this image -- and equally that the build stops until this file is edited when the old
-# version leaves the mirror. That is the trade this service already makes for Core and
-# for the base image, made once more.
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y \
+# this image. The live mirror keeps only the newest version, so apt reads a frozen
+# snapshot of the Debian archive (snapshot.debian.org), as celaut-basics/yt-transcript
+# does: the pinned versions stay there, and the build does not stop when Debian
+# publishes a new one. (openssl 3.0.22-1~deb12u1 left the live mirror by 2026-11-08.)
+# To update, change DEBIAN_SNAPSHOT and the versions together.
+ARG DEBIAN_SNAPSHOT=20261008T000000Z
+RUN sed -i \
+      -e "s|^URIs: http://deb.debian.org/debian\$|URIs: http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}|" \
+      -e "s|^URIs: http://deb.debian.org/debian-security\$|URIs: http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}|" \
+      -e '/^URIs: /a Check-Valid-Until: no' \
+      /etc/apt/sources.list.d/debian.sources \
+    && [ "$(grep -c '^URIs: http://snapshot.debian.org/' /etc/apt/sources.list.d/debian.sources)" = 2 ]
+RUN apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install --no-install-recommends -y \
         openssl=3.0.22-1~deb12u1 \
         libssl3=3.0.22-1~deb12u1 \
         bc=1.07.1-3 \
